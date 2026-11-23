@@ -4,7 +4,7 @@ description: "Scarica da Normattiva il testo ufficiale di una norma italiana - l
 license: MIT
 metadata:
   autore: "ztax.it"
-  versione: "1.0"
+  versione: "1.1"
 ---
 
 # Scarica norma da Normattiva
@@ -15,9 +15,11 @@ comma e lettera. `scripts/scarica-norma.py` lo scarica e lo converte in un `.md`
 **Il testo non lo scrivi tu:** lo prende lo script, e tu scegli URN, vigenza e cartella, lanci
 il comando e riferisci all'utente quello che lo script ha segnalato.
 
-Se `scripts/scarica-norma.py` non c'è (è stato installato solo questo testo), fermati e chiedi
-il pacchetto completo: senza lo script la skill non funziona, e ricostruirlo a mano darebbe un
-testo di legge non verificato.
+Se `scripts/scarica-norma.py` non c'è (è stato installato solo questo testo), fermati e di'
+all'utente di scaricare il pacchetto completo da
+<https://github.com/robertozappala/skill-per-studi> - il file `scarica-norma.zip`, da
+scompattare nella cartella delle skill. Senza lo script la skill non funziona, e ricostruirlo a
+mano darebbe un testo di legge non verificato.
 
 ## Come si lancia
 
