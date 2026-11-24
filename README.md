@@ -31,6 +31,5 @@ per Windows, ma lì non sono state provate.
 
 ## Avvertenza
 
-Le skill aiutano a lavorare, non sostituiscono il controllo professionale: quello che producono
-si verifica sulla fonte, il testo di legge su quello ufficiale e i numeri sul bilancio, e la
-responsabilità resta a chi firma.
+Le skill aiutano a lavorare, non sostituiscono il controllo professionale: l'output va sempre
+verificato.
