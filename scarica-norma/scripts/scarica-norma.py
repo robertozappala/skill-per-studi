@@ -65,6 +65,18 @@ cartella, col nome che aveva: e' superata, non perduta. Le congelate non si tocc
 Gli altri file che sembrano la stessa norma li elenca soltanto: cancellarli e' una
 decisione, e la prende una persona.
 
+Nemmeno riscrive sopra un file che c'e' gia'. Se la destinazione esiste - stesso nome e
+stessa vigenza - e il testo e' diverso, la copia di prima va in «_archivio/» col nome
+«..._sostituita-AAAA-MM-GG-HHMMSS.md» e poi arriva la nuova. Se quella copia e' CONGELATA
+il comando si ferma senza scrivere niente: per rifarla davvero si aggiunge
+  --sostituisci
+e anche allora la copia di prima va in archivio.
+
+Come esce lo scarico: 0 se e' andato tutto a posto; 3 se i file sono scritti ma una o
+piu' porzioni riscritte dal legislatore non hanno trovato posto (sono elencate a schermo
+e in testa al file, e le colloca una persona); 2 se il comando e' stato scritto male;
+un messaggio e 1 se non si e' potuto scaricare o ci si e' fermati.
+
 Le porzioni che il comando non sa ricollocare da se' si annotano a mano in
 «_collocazioni.csv» nella cartella, una riga per porzione:
   norma;articolo;comma;inizio del testo
@@ -433,9 +445,17 @@ def reinserisci(xml, sezioni, nome="", allegati=()):
     # e nel decreto IVA l'inciso sulle imprese sociali sta proprio nella Tabella A.
     gia += [piatto(" ".join(righe)) for _, righe in allegati]
 
+    # ⚠️ Si confronta la porzione INTERA. Bastavano le prime dodici parole, e una porzione
+    # che comincia come un testo gia' nel corpo e poi continua con altro passava per
+    # presente: la lettera e-ter) dell'art. 19 del processo tributario comincia con la
+    # coda della e-bis), e non usciva ne' nel file ne' fra quelle da collocare. Chi non
+    # e' nel corpo per intero segue la strada di tutte le altre: si colloca solo dove la
+    # sequenza ha un posto vuoto e uno solo, altrimenti esce nell'elenco.
+    # I metadati portano i segni «<» e «>» codificati due volte («&amp;lt;»), il corpo
+    # no: si sciolgono prima di confrontare, o una tabella con «< 30 kV» sembra diversa.
     def dentro(t):
-        campione = " ".join(piatto(t).split()[:12])
-        return any(campione in g for g in gia)
+        p = piatto(unescape(unescape(t)))
+        return any(p in g for g in gia)
 
     def vicinato(n):
         """Il segnaposto che precede e quello che segue, con il loro testo."""
@@ -818,6 +838,75 @@ def archivia_superate(scritti, congelata=False):
     return spostate, lasciate
 
 
+SCARICATO_IL = re.compile(r"scaricato il \d\d\.\d\d\.\d{4}")
+
+
+def posa(pronti, sostituisci=False):
+    """Mette al loro posto i file appena scritti, senza perdere quelli che c'erano gia'.
+    `pronti` e' una lista di (file provvisorio, destinazione, articoli). Ritorna
+    (scritti, sostituiti): i primi come (nome, articoli), i secondi come
+    (nome, dove sta la copia di prima, se la sua testa dichiara testo messo a mano).
+
+    Il caso e' quello che archivia_superate() non vede: la destinazione ha lo STESSO nome
+    e la STESSA vigenza - un congelato richiesto di nuovo, o due scarichi nello stesso
+    giorno. Li' una scrittura diretta tronca il file prima che qualcuno lo guardi.
+
+    - se la destinazione non c'e', il file nuovo va al suo posto;
+    - se c'e' ed e' lo stesso testo (a parte il giorno di scarico), una congelata resta
+      com'e' e il resto si rinfresca;
+    - se c'e' ed e' diversa, la copia di prima va in «_archivio/» con un nome suo
+      («..._sostituita-AAAA-MM-GG-HHMMSS.md»), poi arriva la nuova;
+    - ma se quella diversa e' CONGELATA ci si ferma prima di toccare qualunque file: le
+      congelate non si toccano, e rifarne una e' una decisione. La prende chi rilancia
+      con «--sostituisci», e anche allora la copia di prima va in archivio.
+    """
+    stati = []
+    for provvisorio, percorso, _ in pronti:
+        if not os.path.exists(percorso):
+            stati.append(("nuovo", ""))
+            continue
+        with open(percorso, encoding="utf-8", errors="replace") as fh:
+            vecchio = fh.read()
+        with open(provvisorio, encoding="utf-8") as fh:
+            nuovo = fh.read()
+        testa = vecchio[:3000].split("\n## ")[0]
+        congelato = "Vigenza congelata:" in testa
+        if SCARICATO_IL.sub("", vecchio) == SCARICATO_IL.sub("", nuovo):
+            stati.append(("uguale-congelato" if congelato else "uguale", testa))
+        else:
+            stati.append(("congelato" if congelato else "diverso", testa))
+
+    fermi = [os.path.basename(p) for (_, p, _), (s, _) in zip(pronti, stati)
+             if s == "congelato"]
+    if fermi and not sostituisci:
+        for provvisorio, _, _ in pronti:
+            os.remove(provvisorio)
+        raise SystemExit(
+            "Non ho scritto niente. In cartella c'e' gia', CONGELATO e con un testo diverso "
+            "da quello\nche Normattiva da' adesso:\n  %s\nUn testo congelato non si "
+            "riscarica per aggiornarlo, e puo' portare correzioni fatte da\nuna persona. "
+            "Se va rifatto davvero, rilancia lo stesso comando con «--sostituisci»:\nla "
+            "copia di adesso va in «%s/», non si perde." % ("\n  ".join(fermi), ARCHIVIO))
+
+    scritti, sostituiti = [], []
+    marca = time.strftime("%Y-%m-%d-%H%M%S")
+    for (provvisorio, percorso, n), (stato, testa) in zip(pronti, stati):
+        f = os.path.basename(percorso)
+        if stato == "uguale-congelato":
+            os.remove(provvisorio)                # e' gia' quel testo: non si tocca
+        else:
+            if stato in ("diverso", "congelato"):
+                os.makedirs(os.path.join(LEGGI, ARCHIVIO), exist_ok=True)
+                arrivo = os.path.join(LEGGI, ARCHIVIO,
+                                      "%s_sostituita-%s.md" % (f[:-3], marca))
+                os.rename(percorso, arrivo)
+                sostituiti.append((f, os.path.join(ARCHIVIO, os.path.basename(arrivo)),
+                                   bool(A_MANO.search(testa))))
+            os.replace(provvisorio, percorso)
+        scritti.append((f, n))
+    return scritti, sostituiti
+
+
 def elenco():
     print("Legislazione: %s\n" % LEGGI)
     for f in sorted(os.listdir(LEGGI)):
@@ -1174,7 +1263,9 @@ def verifica_abrogati(filtro=None):
         try:
             testo = open(os.path.join(LEGGI, f), encoding="utf-8", errors="replace").read()
         except OSError as e:
-            rotti.append((f.split("_vigenza-")[0],
+            # Tre voci come le altre: il riepilogo in coda le spacchetta a tre, e con due
+            # moriva proprio nel ramo che doveva far proseguire il giro.
+            rotti.append((f.split("_vigenza-")[0], "-",
                           "non si e' potuto leggere: %s" % e.__class__.__name__))
             continue
         nome = f.split("_vigenza-")[0]
@@ -1411,6 +1502,8 @@ def main():
     # dalla data (un file rilavorato ha spesso la vigenza diversa dal giorno di
     # scaricamento), quindi si registra qui, dove la
     # si sa: l'ha chiesta l'utente con `--vigenza`.
+    sostituisci = "--sostituisci" in argv
+    argv = [a for a in argv if a != "--sostituisci"]
     vigenza = time.strftime("%Y-%m-%d")
     congelata = False
     if "--vigenza" in argv:
@@ -1426,7 +1519,9 @@ def main():
         print(__doc__)
         return 2
 
-    urn, nome = argv[0], slug(argv[1])
+    # Il nome si tiene anche com'e' arrivato: slug() trasforma «_» in «-», e il controllo
+    # sul suffisso di una parte, piu' sotto, deve guardare il «_» che c'era.
+    urn, grezzo, nome = argv[0], argv[1], slug(argv[1])
     print("Scarico %s alla vigenza del %s ..." % (urn, data_it(vigenza)))
     xml, gu, cod = scarica(urn, vigenza)
     print("  %s byte, dataGU=%s codiceRedaz=%s" % (format(len(xml), ","), gu, cod))
@@ -1463,16 +1558,20 @@ def main():
     # lo aggiunge questo blocco, e passarlo genera «...-allegato-3_allegato-3_vigenza-x.md».
     # Ci si ferma solo quando il suffisso coincide con una sezione che si sta per scrivere,
     # cioe' quando l'errore e' certo: un «_» qualunque nel nome resta lecito.
+    # Il confronto si fa sul nome com'e' arrivato, diviso all'ultimo «_»: su `nome` il «_»
+    # non c'e' piu', perche' slug() l'ha gia' fatto diventare «-».
+    testa_nome, _, coda_nome = grezzo.rpartition("_")
     for sez in sezioni:
-        if len(sezioni) > 1 and sez != principale and nome.endswith("_" + slug(sez)):
+        if (testa_nome and len(sezioni) > 1 and sez != principale
+                and slug(coda_nome) == slug(sez)):
             raise SystemExit(
                 "il nome «%s» porta gia' il suffisso «_%s», che e' il nome di una PARTE "
                 "di questa norma.\nLe parti le aggiunge il comando da se': passa il nome "
                 "base «%s» e le riscrive tutte.\nAltrimenti nasce un doppione col nome "
-                "storto." % (nome, slug(sez), nome[:-len("_" + slug(sez))]))
+                "storto." % (grezzo, slug(sez), slug(testa_nome)))
 
     os.makedirs(LEGGI, exist_ok=True)
-    scritti = []
+    pronti = []
     for sez, articoli in sezioni.items():
         preambolo, articoli = stacca_preambolo(articoli)
         parte = "" if len(sezioni) == 1 or sez == principale else "_" + slug(sez)
@@ -1483,7 +1582,12 @@ def main():
         # quale norma sia: in quel caso vale di piu' il nome ricavato dall'URN.
         if slug(sez) in ("allegato", "norme", "testo", "testo-unico", "parte-i"):
             titolo = intestazione_da_urn(urn)
-        with open(percorso, "w", encoding="utf-8") as fh:
+        # Si scrive accanto, non sopra: il file che c'e' gia' si guarda solo a scrittura
+        # finita, in posa(), e fino ad allora resta intero. Il nome comincia col punto,
+        # cosi' nessun elenco della cartella lo prende per una norma.
+        provvisorio = os.path.join(LEGGI, ".%s.in-scrittura" % os.path.basename(percorso))
+        pronti.append((provvisorio, percorso, len(articoli)))
+        with open(provvisorio, "w", encoding="utf-8") as fh:
             fh.write("# %s\n\n" % titolo)
             fh.write("URN: `%s`\n\n" % (urn_vero or urn))
             fh.write("Testo consolidato alla vigenza del %s.\n" % data_it(vigenza))
@@ -1494,6 +1598,19 @@ def main():
             if consolidato:
                 fh.write("Ultima versione dell'atto: %s.\n" % data_it(consolidato))
             fh.write("Articoli: %d.\n\n" % len(articoli))
+            # Le porzioni senza posto si dichiarano nel file, non solo a schermo: chi lo
+            # apre fra tre mesi deve sapere che manca qualcosa, e che cosa. Stanno nella
+            # parte principale, per intero. ⚠️ Il verbo e' «collocare»: «mettere a mano»
+            # in testa a un file e' la formula che A_MANO legge come testo non di export.
+            if orfane and (len(sezioni) == 1 or sez == principale):
+                fh.write("⚠️ Porzioni non collocate: %d. Normattiva le tiene fuori dal "
+                         "corpo dell'articolo e la\nsequenza non dice dove vadano: in "
+                         "questo file MANCANO dal loro articolo. Si collocano aprendo\n"
+                         "Normattiva alla stessa vigenza; collocata l'ultima, questo "
+                         "avviso si toglie.\n\n" % len(orfane))
+                for vicini, testo in orfane:
+                    fh.write("- fra art. %s: %s\n" % (" e ".join(vicini) or "?", testo))
+                fh.write("\n")
             fh.write("Fonte: Normattiva, formato Akoma Ntoso, scaricato il %s.\n"
                      "Il testo non e' estratto da scansione: per controllarlo si apre\n"
                      "Normattiva alla stessa vigenza, non un PDF.\n\n---\n\n"
@@ -1511,11 +1628,21 @@ def main():
             if sez == principale:
                 for etichetta, righe in allegati:
                     fh.write("## %s\n\n%s\n\n" % (etichetta, "\n".join(righe)))
-        scritti.append((os.path.basename(percorso), len(articoli)))
+
+    scritti, sostituiti = posa(pronti, sostituisci)
 
     print("\nScritti in %s:" % LEGGI)
     for f, n in scritti:
         print("  %s  (%d articoli)" % (f, n))
+    if sostituiti:
+        print("\nC'erano gia', con un testo diverso. Le copie di prima sono in «%s/»:"
+              % ARCHIVIO)
+        for f, dove_sta, a_mano in sostituiti:
+            print("  %s\n    -> %s" % (f, dove_sta))
+            if a_mano:
+                print("    ⚠️  la sua testa parla di testo messo A MANO: e' in archivio, non "
+                      "perduto.\n        Confronta col file nuovo e riporta cio' che "
+                      "l'export non da'.")
 
     if formula:
         print("\nNon ho scritto il corpo dell'atto (%s, %d articoli): e' la formula\n"
@@ -1578,6 +1705,13 @@ def main():
     # norma: riscrive solo la tabella, ed e' reversibile rilanciando «--indice».
     print("\nRifaccio l'indice, che dopo uno scarico non e' piu' vero:")
     indice()
+    # 3 non e' un errore e non e' un successo pieno: i file ci sono, ma a qualcuno manca
+    # una porzione che va collocata da una persona. Chi lancia il comando da un altro
+    # programma deve poterlo distinguere da «tutto a posto» senza leggere lo schermo.
+    if orfane:
+        print("\n⚠️  Esco con 3: i file sono scritti, ma %d porzioni vanno collocate da una "
+              "persona.\n    Sono elencate qui sopra e in testa al file." % len(orfane))
+        return 3
     return 0
 
 
