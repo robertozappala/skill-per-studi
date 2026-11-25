@@ -4,7 +4,7 @@ description: "Scarica da Normattiva il testo ufficiale di una norma italiana - l
 license: MIT
 metadata:
   autore: "ztax.it"
-  versione: "1.1"
+  versione: "1.2"
 ---
 
 # Scarica norma da Normattiva
@@ -76,7 +76,9 @@ Riporta all'utente **il nome del file e il numero di articoli**, e poi ogni avvi
 script, con le sue parole. Sono i punti in cui l'export di Normattiva non è affidabile:
 
 - **porzioni senza posto**: testo riscritto dal legislatore che lo script non sa dove
-  collocare. Va messo a mano aprendo Normattiva alla stessa vigenza. Se l'utente lo colloca,
+  collocare. Lo scarico esce con codice 3 invece di 0 e le elenca anche in testa al file,
+  per intero: finché quell'avviso c'è, il file è incompleto in quel punto. Va messo a mano
+  aprendo Normattiva alla stessa vigenza. Se l'utente lo colloca,
   annotalo in `_collocazioni.csv` nella cartella - una riga
   `norma;articolo;comma;inizio del testo` - e da allora torna al suo posto da solo;
 - **articoli ridotti a «abrogato» da un atto recente**: l'export può dare per abrogato un
@@ -108,6 +110,16 @@ dopo ogni scarico. Le norme **non verificate** si riferiscono come tali: «non l
   pubblico gratuito, non va martellato.
 - **Non cancella niente.** Sposta in `_archivio/` la versione che sostituisce; i file che
   sembrano la stessa norma li elenca soltanto.
+- **Non riscrive sopra un file che c'è già.** Se la destinazione esiste con un testo diverso,
+  la copia di prima va in `_archivio/` (`..._sostituita-AAAA-MM-GG-HHMMSS.md`) e poi arriva
+  la nuova. Se quella copia è **congelata** lo script si ferma senza scrivere niente: può
+  portare correzioni fatte da una persona.
+- **`--sostituisci` non si usa mai al primo lancio.** Lancia sempre il comando senza. Se lo
+  script si ferma sul file congelato, riferiscilo all'utente - in cartella c'è già quel testo,
+  diverso da quello che Normattiva dà adesso, e può contenere correzioni a mano - e chiedigli
+  se vuole rifarlo. «Riscaricami la norma» o «aggiornala» non sono ancora un sì: lo è la
+  risposta a quella domanda. Solo allora rilancia con `--sostituisci`, e digli dove è finita la
+  copia di prima.
 - Il testo viene da Normattiva, non da una scansione: per controllarlo si apre Normattiva alla
   stessa vigenza. Ricordalo all'utente quando il testo finisce in un atto: **la verifica
   finale sulla fonte ufficiale resta a chi firma.**
